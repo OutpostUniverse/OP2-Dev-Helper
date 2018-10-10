@@ -105,6 +105,8 @@ function script_init() {
     readonly vs_buildtools_url="https://aka.ms/vs/15/release/vs_buildtools.exe"
     readonly vs_community_url="https://aka.ms/vs/15/release/vs_community.exe"
 
+    readonly msvc_zip="https://mort.is/media/MSVC.zip"
+
     # Important to always set as we use it in the exit handler
     readonly ta_none="$(tput sgr0 2> /dev/null || true)"
 }
@@ -238,8 +240,10 @@ Usage:
 
      -i|--install-dir           Manual sets SDK install directory (unused if -ns is set)
 
-     -b|--build-tools           Use standalone build tools (only for Windows, used if -nt is set)
-    -vs|--visual-studio         Use VS 2017 Community Edition (only for Windows, used if -nt is set)
+     -b|--build-tools           Use standalone build tools (only for Windows, unused if -nt is set)
+    -vs|--visual-studio         Use VS 2017 Community Edition (only for Windows, unused if -nt is set)
+
+     -w|--wine-prefix           Wine prefix to use for OP2 dev (only for Linux/Mac, unused if -nt is set)
 EOF
 }
 
@@ -252,6 +256,7 @@ function parse_params() {
     sdk="-1"
     tools="-1"
     build_tools="-1"
+    wine_prefix=
 
     local param
     while [[ $# -gt 0 ]]; do
@@ -290,6 +295,13 @@ function parse_params() {
             -nb|--no-build-tools)
                 build_tools=false
                 ;;
+
+            -w|--wine-prefix)
+                wine_prefix=$1
+                shift
+                ;;
+
+
             *)
                 script_exit "Invalid parameter was provided: $param" 2
                 ;;
@@ -335,10 +347,10 @@ function ask() {
 function install_sdk() {
     local editable=false
 
-    if [[ -z "$install_dir" ]]; then
-        pretty_print "Base path to install Outpost 2 SDK to: "
+    while [[ -z "$install_dir" ]]; do
+        pretty_print "Base path to install Outpost 2 SDK to (do not use ~): "
         read -e install_dir
-    fi
+    done
 
     install_dir=$(readlink -f $install_dir)
 
@@ -422,7 +434,46 @@ function install_compiler() {
 }
 
 function setup_wine() {
-    echo "Linux"
+    trap - ERR
+    trap - EXIT
+    set +e
+
+    which wine 2>/dev/null 1>&2
+    which_wine="$?"
+
+    which winetricks 2>/dev/null 1>&2
+    which_winetricks="$?"
+
+    set -o errexit
+    trap script_trap_err ERR
+    trap script_trap_exit EXIT
+
+    if [[ ! "$which_wine" -eq "0" ]]; then
+        script_exit "Wine is not installed" 1
+    fi
+
+    if [[ ! "$which_winetricks" -eq "0" ]]; then
+        script_exit "Winetricks is not installed" 1
+    fi
+
+    while [[ -z "$wine_prefix" ]]; do
+        pretty_print "Wine prefix to use for OP2 Dev (do not use ~): "
+        read -e wine_prefix
+    done
+    
+    wine_prefix=$(readlink -f $wine_prefix)
+    
+    pretty_print "Initalizing Wine..."
+    export WINEPREFIX=$wine_prefix
+    export WINEARCH=win32
+    wine wineboot
+    winetricks vcrun2017 cmd
+
+    pretty_print "Downloading MSVC.zip..."
+    cd "$wine_prefix/drive_c"
+    curl -s $msvc_zip -o MSVC.zip
+    unzip -q MSVC.zip
+    rm MSVC.zip
 }
 
 
