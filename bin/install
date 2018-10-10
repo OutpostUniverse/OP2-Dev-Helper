@@ -96,6 +96,9 @@ function script_init() {
     readonly levels="LevelTemplate-Blank-Comments.git LevelTemplate-Hooville.git LevelTemplate-Blank.git"
     readonly api="Outpost2DLL.git OP2Helper.git HFL-IUnit.git HFL.git"
 
+    readonly game_zip="Outpost2-1.3.0.7-OPU.zip"
+    readonly game_url="http://outpost2.net/files/op2/game/1.3.0.7/$game_zip"
+
     # Important to always set as we use it in the exit handler
     readonly ta_none="$(tput sgr0 2> /dev/null || true)"
 }
@@ -317,6 +320,15 @@ function main() {
         pretty_print "Cloning $repo_name..."
         git clone $base$repo_name
     done;
+    cd ..
+
+    # install game
+    pretty_print "Installing OP2 Game..."
+    mkdir Game
+    cd Game
+    wget $game_url
+    unzip -q $game_zip
+    cd ..
 }
 
 
