@@ -402,27 +402,27 @@ function install_sdk() {
 }
 
 function install_compiler() {
-    if [ -d "/c" ] || [ -d "/mnt/c" ]; then
-        if [[ "$build_tools" = "-1" ]]; then
-            if ask "Do you want to use Visual Studio?" Y; then
-                build_tools=false
-            else
-                build_tools=true
-            fi
-        fi
-
-        if [[ "$build_tools" = true ]]; then
-            pretty_print "Installing Build Tools for Visual Studio..."
-            curl -s --http1.1 -L $vs_buildtools_url -o vs_installer.exe
-            ./vs_installer.exe --passive --wait --norestart --nocache --add Microsoft.VisualStudio.Product.BuildTools --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.Windows10SDK.17134 --includeRecommended
+    if [[ "$build_tools" = "-1" ]]; then
+        if ask "Do you want to use Visual Studio?" Y; then
+            build_tools=false
         else
-            pretty_print "Installing Visual Studio 2017 Community Edition..."
-            curl -s --http1.1 -L $vs_community_url -o vs_installer.exe
-            ./vs_installer.exe --passive --wait --norestart --nocache --add Microsoft.VisualStudio.Workload.CoreEditor --add Microsoft.VisualStudio.Component.VC.CoreBuildTools --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.Windows10SDK.17134 --add Microsoft.VisualStudio.Component.NuGet --add Microsoft.Component.MSBuild --add Microsoft.VisualStudio.Component.VC.Redist.14.Latest --add Microsoft.VisualStudio.Component.VC.CMake.Project --add Microsoft.VisualStudio.Component.VC.ATL --includeRecommended
+            build_tools=true
         fi
-    else
-        echo "Linux"
     fi
+
+    if [[ "$build_tools" = true ]]; then
+        pretty_print "Installing Build Tools for Visual Studio..."
+        curl -s --http1.1 -L $vs_buildtools_url -o vs_installer.exe
+        ./vs_installer.exe --passive --wait --norestart --nocache --add Microsoft.VisualStudio.Product.BuildTools --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.Windows10SDK.17134 --includeRecommended
+    else
+        pretty_print "Installing Visual Studio 2017 Community Edition..."
+        curl -s --http1.1 -L $vs_community_url -o vs_installer.exe
+        ./vs_installer.exe --passive --wait --norestart --nocache --add Microsoft.VisualStudio.Workload.CoreEditor --add Microsoft.VisualStudio.Component.VC.CoreBuildTools --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.Windows10SDK.17134 --add Microsoft.VisualStudio.Component.NuGet --add Microsoft.Component.MSBuild --add Microsoft.VisualStudio.Component.VC.Redist.14.Latest --add Microsoft.VisualStudio.Component.VC.CMake.Project --add Microsoft.VisualStudio.Component.VC.ATL --includeRecommended
+    fi
+}
+
+function setup_wine() {
+    echo "Linux"
 }
 
 
@@ -437,6 +437,9 @@ function main() {
     parse_params "$@"
     colour_init
 
+    local os="Linux"
+    tools_prompt="Do you want to set up Wine for OP2 dev?"
+
     if [[ "$sdk" = "-1" ]]; then
         if ask "Do you want to install OP2 SDK?" Y; then
             sdk=true
@@ -449,8 +452,13 @@ function main() {
         install_sdk
     fi
 
+    if [ -d "/c" ] || [ -d "/mnt/c" ]; then
+        os="Windows"
+        tools_prompt="Do you want to install Visual Studio or Build Tools for VS?"
+    fi
+
     if [[ "$tools" = "-1" ]]; then
-        if ask "Do you want to install Visual Studio or Build Tools for VS?" Y; then
+        if ask "$tools_prompt" Y; then
             tools=true
         else
             tools=false
@@ -458,7 +466,11 @@ function main() {
     fi
 
     if [[ "$tools" = true ]]; then
-        install_compiler
+        if [[ "$os" -eq "Windows" ]]; then
+            install_compiler
+        else
+            setup_wine
+        fi
     fi
 }
 
