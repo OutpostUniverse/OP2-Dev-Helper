@@ -326,7 +326,7 @@ function main() {
     pretty_print "Installing OP2 Game..."
     mkdir Game
     cd Game
-    wget $game_url
+    curl $game_url -o $game_zip
     unzip -q $game_zip
     cd ..
 }
