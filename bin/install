@@ -466,7 +466,7 @@ function main() {
     fi
 
     if [[ "$tools" = true ]]; then
-        if [[ "$os" -eq "Windows" ]]; then
+        if [[ "$os" = "Windows" ]]; then
             install_compiler
         else
             setup_wine
