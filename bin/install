@@ -328,6 +328,7 @@ function main() {
     cd Game
     curl $game_url -o $game_zip
     unzip -q $game_zip
+    rm $game_zip
     cd ..
 }
 
