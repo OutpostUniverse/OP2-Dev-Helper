@@ -42,6 +42,9 @@ function script_trap_exit() {
 
     # Restore terminal colours
     printf '%b' "$ta_none"
+
+    # clean up downloaded files
+    rm -f vs_installer.exe || true
 }
 
 
@@ -98,6 +101,9 @@ function script_init() {
 
     readonly game_zip="Outpost2-1.3.0.7-OPU.zip"
     readonly game_url="http://outpost2.net/files/op2/game/1.3.0.7/$game_zip"
+
+    readonly vs_buildtools_url="https://aka.ms/vs/15/release/vs_buildtools.exe"
+    readonly vs_community_url="https://aka.ms/vs/15/release/vs_community.exe"
 
     # Important to always set as we use it in the exit handler
     readonly ta_none="$(tput sgr0 2> /dev/null || true)"
@@ -223,6 +229,17 @@ function script_usage() {
     cat << EOF
 Usage:
      -h|--help                  Displays this help
+    -nc|--no-colour             Disables colour output
+
+     -s|--sdk                   Installs OP2 SDK
+    -ns|--no-sdk                Skips installing OP2 SDK
+     -t|--tools                 Prompts for Visual Studio or Build Tools for VS
+    -nt|--no-tools              Skips prompts for Visual Studio or Build Tools for VS
+
+     -i|--install-dir           Manual sets SDK install directory (unused if -ns is set)
+
+     -b|--build-tools           Use standalone build tools (only for Windows, used if -nt is set)
+    -vs|--visual-studio         Use VS 2017 Community Edition (only for Windows, used if -nt is set)
 EOF
 }
 
@@ -232,6 +249,9 @@ EOF
 # OUTS: Variables indicating command-line parameters and options
 function parse_params() {
     install_dir=
+    sdk="-1"
+    tools="-1"
+    build_tools="-1"
 
     local param
     while [[ $# -gt 0 ]]; do
@@ -245,9 +265,30 @@ function parse_params() {
             -nc|--no-colour)
                 no_colour=true
                 ;;
+
+            -s|--sdk)
+                sdk=true
+                ;;
+            -ns|--no-sdk)
+                sdk=false
+                ;;
+            -t|--tools)
+                tools=true
+                ;;
+            -nt|--no-tools)
+                tools=false
+                ;;
+
             -i|--install-dir)
                 install_dir="$1"
                 shift
+                ;;
+
+            -b|--build-tools)
+                build_tools=true
+                ;;
+            -nb|--no-build-tools)
+                build_tools=false
                 ;;
             *)
                 script_exit "Invalid parameter was provided: $param" 2
@@ -256,24 +297,52 @@ function parse_params() {
     done
 }
 
+function ask() {
+    # https://gist.github.com/davejamesmiller/1965569
+    local prompt default reply
 
-# DESC: Main control flow
-# ARGS: $@ (optional): Arguments provided to the script
-# OUTS: None
-function main() {
-    trap script_trap_err ERR
-    trap script_trap_exit EXIT
+    if [ "${2:-}" = "Y" ]; then
+        prompt="Y/n"
+        default=Y
+    elif [ "${2:-}" = "N" ]; then
+        prompt="y/N"
+        default=N
+    else
+        prompt="y/n"
+        default=
+    fi
 
-    script_init "$@"
-    parse_params "$@"
-    colour_init
+    while true; do
+        # Ask the question (not using "read -p" as it uses stderr not stdout)
+        pretty_print "$1 [$prompt]"
+        # Read the answer (use /dev/tty in case stdin is redirected from somewhere else)
+        read reply </dev/tty
 
+        # Default?
+        if [ -z "$reply" ]; then
+            reply=$default
+        fi
+
+        # Check if the reply is valid
+        case "$reply" in
+            Y*|y*) return 0 ;;
+            N*|n*) return 1 ;;
+        esac
+    done
+}
+
+
+function install_sdk() {
     local editable=false
 
     if [[ -z "$install_dir" ]]; then
         pretty_print "Base path to install Outpost 2 SDK to: "
         read -e install_dir
     fi
+
+    install_dir=$(readlink -f $install_dir)
+
+    pretty_print "Using $install_dir..."
 
     pretty_print "Checking for edit permissions..."
 
@@ -330,6 +399,67 @@ function main() {
     unzip -q $game_zip
     rm $game_zip
     cd ..
+}
+
+function install_compiler() {
+    if [ -d "/c" ] || [ -d "/mnt/c" ]; then
+        if [[ "$build_tools" = "-1" ]]; then
+            if ask "Do you want to use Visual Studio?" Y; then
+                build_tools=false
+            else
+                build_tools=true
+            fi
+        fi
+
+        if [[ "$build_tools" = true ]]; then
+            pretty_print "Installing Build Tools for Visual Studio..."
+            curl -s --http1.1 -L $vs_buildtools_url -o vs_installer.exe
+            ./vs_installer.exe --passive --wait --norestart --nocache --add Microsoft.VisualStudio.Product.BuildTools --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.Windows10SDK.17134 --includeRecommended
+        else
+            pretty_print "Installing Visual Studio 2017 Community Edition..."
+            curl -s --http1.1 -L $vs_community_url -o vs_installer.exe
+            ./vs_installer.exe --passive --wait --norestart --nocache --add Microsoft.VisualStudio.Workload.CoreEditor --add Microsoft.VisualStudio.Component.VC.CoreBuildTools --add Microsoft.VisualStudio.Component.VC.Tools.x86.x64 --add Microsoft.VisualStudio.Component.Windows10SDK.17134 --add Microsoft.VisualStudio.Component.NuGet --add Microsoft.Component.MSBuild --add Microsoft.VisualStudio.Component.VC.Redist.14.Latest --add Microsoft.VisualStudio.Component.VC.CMake.Project --add Microsoft.VisualStudio.Component.VC.ATL --includeRecommended
+        fi
+    else
+        echo "Linux"
+    fi
+}
+
+
+# DESC: Main control flow
+# ARGS: $@ (optional): Arguments provided to the script
+# OUTS: None
+function main() {
+    trap script_trap_err ERR
+    trap script_trap_exit EXIT
+
+    script_init "$@"
+    parse_params "$@"
+    colour_init
+
+    if [[ "$sdk" = "-1" ]]; then
+        if ask "Do you want to install OP2 SDK?" Y; then
+            sdk=true
+        else
+            sdk=false
+        fi
+    fi
+
+    if [[ "$sdk" = true ]]; then
+        install_sdk
+    fi
+
+    if [[ "$tools" = "-1" ]]; then
+        if ask "Do you want to install Visual Studio or Build Tools for VS?" Y; then
+            tools=true
+        else
+            tools=false
+        fi
+    fi
+
+    if [[ "$tools" = true ]]; then
+        install_compiler
+    fi
 }
 
 
